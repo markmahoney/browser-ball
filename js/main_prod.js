@@ -4,7 +4,9 @@ window.browserball = (function () {
     a = 0.89,
     c = 0.97,
     s = 15;
-  var l = {
+
+  // The ball!
+  var ball = {
     dragging: true,
     img: new Image(),
     angle: 0,
@@ -25,48 +27,62 @@ window.browserball = (function () {
       );
     },
   };
-  var o = {
+
+  // Centers the ball in the parent window and renders it inert when the reset button is pressed.
+  var resetBall = function () {
+    ball.dragging = true;
+    ball.rotation = 0;
+    ball.x = window.screenX - worldOrigin.x0 + window.innerWidth / 2;
+    ball.y = window.screenY - worldOrigin.y0 + window.innerHeight / 2;
+  };
+
+  // Tracks the uppermost and leftmost coordinates of all windows to form the origin (0, 0) of world-translated coordinates.
+  // I'm unsure why this wasn't built into `windowListManager`. I should clean up all usages of `screenX`\`screenY`.
+  var worldOrigin = {
     x0: Infinity,
     y0: Infinity,
     update: function () {
       var x,
         w,
-        v = o.x0,
-        A = o.y0,
+        v = worldOrigin.x0,
+        A = worldOrigin.y0,
         z;
-      for (var y = 0, u = e.list.length; y < u; y++) {
-        z = e.list[y].ref;
+      for (var y = 0, u = windowListManager.list.length; y < u; y++) {
+        z = windowListManager.list[y].ref;
         x = x < z.screenX ? x : z.screenX;
         w = w < z.screenY ? w : z.screenY;
       }
-      o.x0 = x;
-      o.y0 = w;
-      l.x += v - x;
-      l.y += A - w;
+      worldOrigin.x0 = x;
+      worldOrigin.y0 = w;
+      ball.x += v - x;
+      ball.y += A - w;
     },
   };
-  var e = {
+
+  // This is the list of all open windows. We use this to calculate world bounds and if any points/lines intersect with the list.
+  // I'll add more details as I untangle the various things this object does.
+  var windowListManager = {
     list: [],
     corners: [],
     add: function (u) {
-      u.quad_ref = e.list.length;
+      u.quad_ref = windowListManager.list.length;
       this.list.push({
         ref: u,
         canvas: u.document.getElementById("stage"),
         context: u.document.getElementById("stage").getContext("2d"),
-        x1: u.screenX - o.x0,
-        y1: u.screenY - o.y0,
-        x2: u.screenX + u.innerWidth - o.x0,
-        y2: u.screenY + u.innerHeight - o.y0,
+        x1: u.screenX - worldOrigin.x0,
+        y1: u.screenY - worldOrigin.y0,
+        x2: u.screenX + u.innerWidth - worldOrigin.x0,
+        y2: u.screenY + u.innerHeight - worldOrigin.y0,
       });
-      o.update();
-      e.update();
+      worldOrigin.update();
+      windowListManager.update();
     },
     remove: function (v) {
-      var x = e.list.splice(v, 1)[0];
+      var x = windowListManager.list.splice(v, 1)[0];
       x.canvas = x.context = null;
-      for (var w = 0, u = e.list.length; w < u; w++) {
-        e.list[w].ref.quad_ref = w;
+      for (var w = 0, u = windowListManager.list.length; w < u; w++) {
+        windowListManager.list[w].ref.quad_ref = w;
       }
       return x.ref;
     },
@@ -74,17 +90,17 @@ window.browserball = (function () {
       var x,
         w,
         u,
-        y = e.list;
-      e.corners = [];
+        y = windowListManager.list;
+      windowListManager.corners = [];
       for (x = 0, u = y.length; x < u; x++) {
-        y[x].x1 = y[x].ref.screenX - o.x0;
-        y[x].y1 = y[x].ref.screenY - o.y0;
-        y[x].x2 = y[x].ref.screenX + y[x].ref.innerWidth - o.x0;
-        y[x].y2 = y[x].ref.screenY + y[x].ref.innerHeight - o.y0;
+        y[x].x1 = y[x].ref.screenX - worldOrigin.x0;
+        y[x].y1 = y[x].ref.screenY - worldOrigin.y0;
+        y[x].x2 = y[x].ref.screenX + y[x].ref.innerWidth - worldOrigin.x0;
+        y[x].y2 = y[x].ref.screenY + y[x].ref.innerHeight - worldOrigin.y0;
       }
       for (x = 0; x < u - 1; x++) {
         for (w = x + 1; w < u; w++) {
-          e.findWorldCorners(y[x], y[w]);
+          windowListManager.findWorldCorners(y[x], y[w]);
         }
       }
     },
@@ -105,8 +121,8 @@ window.browserball = (function () {
       var v, u, x, D, B;
       for (v = 0; v < 4; v++) {
         for (u = (v + 1) % 4, x = 0; x < 2; u = (u + 2) % 4, x++) {
-          A = e.sIntersection(E[v], C[u]);
-          if (A && !e.pInsideAny(A.x, A.y)) {
+          A = windowListManager.sIntersection(E[v], C[u]);
+          if (A && !windowListManager.pInsideAny(A.x, A.y)) {
             D = 0;
             B = 0;
             if (E[v].x1 == E[v].x2) {
@@ -116,7 +132,7 @@ window.browserball = (function () {
               (D = C[u].y1 < C[u].y2 ? 1 : -1),
                 (B = E[v].x1 < E[v].x2 ? -1 : 1);
             }
-            e.corners.push({ x: A.x, y: A.y, dx: D, dy: B });
+            windowListManager.corners.push({ x: A.x, y: A.y, dx: D, dy: B });
           }
         }
       }
@@ -165,34 +181,54 @@ window.browserball = (function () {
     },
     pInsideAny: function (w, A) {
       var v = false;
-      for (var z = 0, u = e.list.length; z < u && !v; z++) {
-        v = e.pInsideNotEdge(w, A, e.list[z]);
+      for (var z = 0, u = windowListManager.list.length; z < u && !v; z++) {
+        v = windowListManager.pInsideNotEdge(w, A, windowListManager.list[z]);
       }
       return v;
     },
     sInside: function (v, B, u, A) {
       var C = false,
         p2 = false,
-        z = e.list,
+        z = windowListManager.list,
         w = 0;
       for (var x = 0, y = z.length; x < y && !w; x++) {
-        C = e.pInside(v, B, z[x]);
-        p2 = e.pInside(u, A, z[x]);
+        C = windowListManager.pInside(v, B, z[x]);
+        p2 = windowListManager.pInside(u, A, z[x]);
         if (C && p2) {
           return v == u ? A - B : u - v;
         } else {
           if (C && !p2) {
             if (v == u) {
-              return z[x].y2 - B + 1 + e.sInside(v, z[x].y2 + 1, u, A);
+              return (
+                z[x].y2 -
+                B +
+                1 +
+                windowListManager.sInside(v, z[x].y2 + 1, u, A)
+              );
             } else {
-              return z[x].x2 - v + 1 + e.sInside(z[x].x2 + 1, B, u, A);
+              return (
+                z[x].x2 -
+                v +
+                1 +
+                windowListManager.sInside(z[x].x2 + 1, B, u, A)
+              );
             }
           } else {
             if (!C && p2) {
               if (v == u) {
-                return A - z[x].y1 + 1 + e.sInside(v, B, u, z[x].y1 - 1);
+                return (
+                  A -
+                  z[x].y1 +
+                  1 +
+                  windowListManager.sInside(v, B, u, z[x].y1 - 1)
+                );
               } else {
-                return u - z[x].x1 + 1 + e.sInside(v, B, z[x].x1 - 1, A);
+                return (
+                  u -
+                  z[x].x1 +
+                  1 +
+                  windowListManager.sInside(v, B, z[x].x1 - 1, A)
+                );
               }
             } else {
             }
@@ -202,51 +238,54 @@ window.browserball = (function () {
       return 0;
     },
   };
-  var h = (function () {
+
+  var mouseHandlers = (function () {
     var v = null,
       u;
     return {
-      down: function (z) {
-        var A = z.target.ownerDocument.defaultView,
-          w = A.screenX - o.x0 + z.clientX,
-          B = A.screenY - o.y0 + z.clientY;
-        if (l.inside(w, B)) {
-          l.dragging = true;
-          l.rotation = 0;
-          l.drag_point.x = l.x - w;
-          l.drag_point.y = l.y - B;
+      down: function (event) {
+        var A = event.target.ownerDocument.defaultView,
+          w = A.screenX - worldOrigin.x0 + event.clientX,
+          B = A.screenY - worldOrigin.y0 + event.clientY;
+        if (ball.inside(w, B)) {
+          ball.dragging = true;
+          ball.rotation = 0;
+          ball.drag_point.x = ball.x - w;
+          ball.drag_point.y = ball.y - B;
           v = { x: 0, y: 0 };
           u = { x: w, y: B };
-          A.addEventListener("mousemove", h.track, false);
+          A.addEventListener("mousemove", mouseHandlers.track, false);
         }
       },
-      track: function (z) {
-        var A = z.target.ownerDocument.defaultView,
-          w = A.screenX - o.x0 + z.clientX,
-          B = A.screenY - o.y0 + z.clientY;
-        l.x = w + l.drag_point.x;
-        l.y = B + l.drag_point.y;
+      track: function (event) {
+        var A = event.target.ownerDocument.defaultView,
+          w = A.screenX - worldOrigin.x0 + event.clientX,
+          B = A.screenY - worldOrigin.y0 + event.clientY;
+        ball.x = w + ball.drag_point.x;
+        ball.y = B + ball.drag_point.y;
         v.x = w - u.x;
         v.y = B - u.y;
         u.x = w;
         u.y = B;
       },
-      up: function (w) {
-        var x = w.target.ownerDocument.defaultView;
-        if (l.dragging && v) {
-          x.removeEventListener("mousemove", h.track, false);
-          l.velocity.x = Math.abs(v.x) > 20 ? (v.x < 0 ? -1 : 1) * 20 : v.x;
-          l.velocity.y = Math.abs(v.y) > 20 ? (v.y < 0 ? -1 : 1) * 20 : v.y;
+      up: function (event) {
+        var x = event.target.ownerDocument.defaultView;
+        if (ball.dragging && v) {
+          x.removeEventListener("mousemove", mouseHandlers.track, false);
+          ball.velocity.x = Math.abs(v.x) > 20 ? (v.x < 0 ? -1 : 1) * 20 : v.x;
+          ball.velocity.y = Math.abs(v.y) > 20 ? (v.y < 0 ? -1 : 1) * 20 : v.y;
           v = u = null;
-          l.drag_point.x = l.drag_point.y = 0;
-          l.dragging = false;
+          ball.drag_point.x = ball.drag_point.y = 0;
+          ball.dragging = false;
         }
       },
     };
   })();
-  var n = function (w) {
-    var x = w.target.defaultView || w.target,
-      u = e.list[x.quad_ref],
+
+  // When a window resizes, updates the window list manager.
+  var windowResizeHandler = function (event) {
+    var x = event.target.defaultView || event.target,
+      u = windowListManager.list[x.quad_ref],
       v = u.canvas;
     v.width = x.innerWidth;
     v.height = x.innerHeight;
@@ -254,38 +293,44 @@ window.browserball = (function () {
       x.screenX = x.screenLeft;
       x.screenY = x.screenTop;
     }
-    o.update();
-    e.update();
+    worldOrigin.update();
+    windowListManager.update();
   };
-  var r = function () {
+
+  // Interval poller to watch for any window movement. If a window has moved, updates the window list manager.
+  var windowPositionPoller = function () {
     var w = false,
       x;
-    for (var v = 0, u = e.list.length; v < u; v++) {
-      x = e.list[v].ref;
+    for (var v = 0, u = windowListManager.list.length; v < u; v++) {
+      x = windowListManager.list[v].ref;
       if (q) {
         x.screenX = x.screenLeft;
         x.screenY = x.screenTop;
       }
       if (
-        e.list[v].x1 != x.screenX - o.x0 ||
-        e.list[v].y1 != x.screenY - o.y0
+        windowListManager.list[v].x1 != x.screenX - worldOrigin.x0 ||
+        windowListManager.list[v].y1 != x.screenY - worldOrigin.y0
       ) {
         w = true;
       }
     }
     if (w) {
-      o.update();
-      e.update();
+      worldOrigin.update();
+      windowListManager.update();
     }
   };
-  var g = function () {
+
+  // Creates a new child window. We rely on a script tag inside the child window HTML to actually register the new
+  // with window with the `windowListManager` via the `browserball` global in the parent window. This weird circular
+  // process can probably be improved!
+  var createChildWindow = function () {
     var x = "" + (window.screenY + 100),
       w = "" + (window.screenX - 200),
       u = "300",
       v = "300";
     window.open(
       "child.html",
-      "w" + e.list.length,
+      "w" + windowListManager.list.length,
       "location=no,status=no,menubar=no,toolbar=no,scrollbars=no,status=no,width=" +
         v +
         ",height=" +
@@ -296,54 +341,50 @@ window.browserball = (function () {
         x
     );
   };
-  var m = function () {
-    l.dragging = true;
-    l.rotation = 0;
-    l.x = window.screenX - o.x0 + window.innerWidth / 2;
-    l.y = window.screenY - o.y0 + window.innerHeight / 2;
-  };
-  var t = function () {
+
+  // Collision handling code. It's going to take a bit to untangle this, I think.
+  var handleCollisions = function () {
     var O = [],
       C = 1,
       A = 0;
     O.push(
-      l.w -
-        e.sInside(
-          l.x - l.offset.x,
-          l.y - l.offset.y,
-          l.x + l.offset.x,
-          l.y - l.offset.y,
-          e.list.slice(0)
+      ball.w -
+        windowListManager.sInside(
+          ball.x - ball.offset.x,
+          ball.y - ball.offset.y,
+          ball.x + ball.offset.x,
+          ball.y - ball.offset.y,
+          windowListManager.list.slice(0)
         )
     );
     O.push(
-      l.h -
-        e.sInside(
-          l.x + l.offset.x,
-          l.y - l.offset.y,
-          l.x + l.offset.x,
-          l.y + l.offset.y,
-          e.list.slice(0)
+      ball.h -
+        windowListManager.sInside(
+          ball.x + ball.offset.x,
+          ball.y - ball.offset.y,
+          ball.x + ball.offset.x,
+          ball.y + ball.offset.y,
+          windowListManager.list.slice(0)
         )
     );
     O.push(
-      l.w -
-        e.sInside(
-          l.x - l.offset.x,
-          l.y + l.offset.y,
-          l.x + l.offset.x,
-          l.y + l.offset.y,
-          e.list.slice(0)
+      ball.w -
+        windowListManager.sInside(
+          ball.x - ball.offset.x,
+          ball.y + ball.offset.y,
+          ball.x + ball.offset.x,
+          ball.y + ball.offset.y,
+          windowListManager.list.slice(0)
         )
     );
     O.push(
-      l.h -
-        e.sInside(
-          l.x - l.offset.x,
-          l.y - l.offset.y,
-          l.x - l.offset.x,
-          l.y + l.offset.y,
-          e.list.slice(0)
+      ball.h -
+        windowListManager.sInside(
+          ball.x - ball.offset.x,
+          ball.y - ball.offset.y,
+          ball.x - ball.offset.x,
+          ball.y + ball.offset.y,
+          windowListManager.list.slice(0)
         )
     );
     if (!!O[0] || !!O[1] || !!O[2] || !!O[3]) {
@@ -354,11 +395,11 @@ window.browserball = (function () {
         N,
         I = 0;
       for (var K = 0; K < 4; K++) {
-        if (O[K] == l.w) {
+        if (O[K] == ball.w) {
           v = O[(K + 3) % 4];
-          v = v == l.w ? 0 : v;
+          v = v == ball.w ? 0 : v;
           N = O[(K + 1) % 4];
-          N = N == l.w ? 0 : N;
+          N = N == ball.w ? 0 : N;
           M = v > N ? v : N;
           if (M > J) {
             J = M;
@@ -369,32 +410,32 @@ window.browserball = (function () {
         }
       }
       if (J && Q == C) {
-        l.x -= J * (l.velocity.x < 0 ? -1 : 1);
-        l.y -=
-          Math.round((J * l.velocity.y) / l.velocity.x) *
-          (l.velocity.y < 0 ? -1 : 1);
-        l.velocity.x = -l.velocity.x * a;
-        l.velocity.y = l.velocity.y * c;
-        l.rotation = l.velocity.y * 0.015;
+        ball.x -= J * (ball.velocity.x < 0 ? -1 : 1);
+        ball.y -=
+          Math.round((J * ball.velocity.y) / ball.velocity.x) *
+          (ball.velocity.y < 0 ? -1 : 1);
+        ball.velocity.x = -ball.velocity.x * a;
+        ball.velocity.y = ball.velocity.y * c;
+        ball.rotation = ball.velocity.y * 0.015;
       } else {
         if (J && Q == A) {
-          if (l.velocity.y > 1) {
-            l.x -=
-              Math.round((J * l.velocity.x) / l.velocity.y) *
-              (l.velocity.x < 0 ? -1 : 1);
+          if (ball.velocity.y > 1) {
+            ball.x -=
+              Math.round((J * ball.velocity.x) / ball.velocity.y) *
+              (ball.velocity.x < 0 ? -1 : 1);
           }
-          l.y -= J * (l.velocity.y < 0 ? -1 : 1);
-          l.velocity.x = l.velocity.x * c;
-          l.velocity.y = -l.velocity.y * a;
-          l.rotation = l.velocity.x * 0.015;
+          ball.y -= J * (ball.velocity.y < 0 ? -1 : 1);
+          ball.velocity.x = ball.velocity.x * c;
+          ball.velocity.y = -ball.velocity.y * a;
+          ball.rotation = ball.velocity.x * 0.015;
         } else {
           var u,
             D = Number.POSITIVE_INFINITY,
             S,
             P = -1,
-            G = e.corners;
+            G = windowListManager.corners;
           for (var K = 0, L = G.length; K < L; K++) {
-            S = { x: l.x - G[K].x, y: l.y - G[K].y };
+            S = { x: ball.x - G[K].x, y: ball.y - G[K].y };
             u = Math.sqrt(S.x * S.x + S.y * S.y);
             if (u < D) {
               P = K;
@@ -402,46 +443,47 @@ window.browserball = (function () {
             }
           }
           if (P >= 0 && I != 3) {
-            var R = G[P].dx > 0 ? l.x > G[P].x : l.x < G[P].x,
-              H = G[P].dy > 0 ? l.y > G[P].y : l.y < G[P].y,
+            var R = G[P].dx > 0 ? ball.x > G[P].x : ball.x < G[P].x,
+              H = G[P].dy > 0 ? ball.y > G[P].y : ball.y < G[P].y,
               w;
             if ((R && !H) || (H && !R)) {
               if (R) {
-                w = l.radius - Math.abs(l.y - G[P].y);
-                if (l.velocity.y > 1) {
-                  l.x -=
-                    Math.round((w * l.velocity.x) / l.velocity.y) *
-                    (l.velocity.x < 0 ? -1 : 1);
+                w = ball.radius - Math.abs(ball.y - G[P].y);
+                if (ball.velocity.y > 1) {
+                  ball.x -=
+                    Math.round((w * ball.velocity.x) / ball.velocity.y) *
+                    (ball.velocity.x < 0 ? -1 : 1);
                 }
-                l.y -= w * (l.velocity.y < 0 ? -1 : 1);
-                l.velocity.x = l.velocity.x * c;
-                l.velocity.y = -l.velocity.y * a;
-                l.rotation = l.velocity.x * 0.015;
+                ball.y -= w * (ball.velocity.y < 0 ? -1 : 1);
+                ball.velocity.x = ball.velocity.x * c;
+                ball.velocity.y = -ball.velocity.y * a;
+                ball.rotation = ball.velocity.x * 0.015;
               } else {
-                w = l.radius - Math.abs(l.x - G[P].x);
-                l.x -= w * (l.velocity.x < 0 ? -1 : 1);
-                l.y -=
-                  Math.round((w * l.velocity.y) / l.velocity.x) *
-                  (l.velocity.y < 0 ? -1 : 1);
-                l.velocity.x = -l.velocity.x * a;
-                l.velocity.y = l.velocity.y * c;
-                l.rotation = l.velocity.y * 0.015;
+                w = ball.radius - Math.abs(ball.x - G[P].x);
+                ball.x -= w * (ball.velocity.x < 0 ? -1 : 1);
+                ball.y -=
+                  Math.round((w * ball.velocity.y) / ball.velocity.x) *
+                  (ball.velocity.y < 0 ? -1 : 1);
+                ball.velocity.x = -ball.velocity.x * a;
+                ball.velocity.y = ball.velocity.y * c;
+                ball.rotation = ball.velocity.y * 0.015;
               }
             } else {
-              if (D < l.radius) {
-                var F = l.velocity.x,
-                  E = l.velocity.y,
+              if (D < ball.radius) {
+                var F = ball.velocity.x,
+                  E = ball.velocity.y,
                   B,
                   z;
-                w = (l.radius - D) / Math.sqrt(F * F + E * E);
-                l.x -= Math.round(F * w);
-                l.y -= Math.round(E * w * (E < 0 ? -1 : 1));
+                w = (ball.radius - D) / Math.sqrt(F * F + E * E);
+                ball.x -= Math.round(F * w);
+                ball.y -= Math.round(E * w * (E < 0 ? -1 : 1));
                 B = (G[P].dx < 0 && F > 0) || (G[P].dx > 0 && F < 0) ? 1 : -1;
                 z = (G[P].dy < 0 && E > 0) || (G[P].dy > 0 && E < 0) ? 1 : -1;
-                l.velocity.x = B == -1 && z == -1 ? E * a * -G[P].dx : F * B;
-                l.velocity.y =
+                ball.velocity.x = B == -1 && z == -1 ? E * a * -G[P].dx : F * B;
+                ball.velocity.y =
                   B == -1 && z == -1 ? F * a * -G[P].dy : E * a * z;
-                l.rotation = l.velocity.x * 0.015 + l.velocity.y * 0.015;
+                ball.rotation =
+                  ball.velocity.x * 0.015 + ball.velocity.y * 0.015;
               }
             }
           }
@@ -449,36 +491,42 @@ window.browserball = (function () {
       }
     }
   };
-  var f = function () {
+
+  // Update the world by updating the ball position, checking for collisions (which may update the ball position
+  // again), and then re-render each window's canvas.
+  // I should split out the rendering code from the collision detection code.
+  var updateWorld = function () {
     var z, w, y, x;
-    if (!l.dragging) {
-      l.velocity.y += b;
-      if (Math.abs(l.velocity.x) < 1) {
-        l.velocity.x = 0;
+    if (!ball.dragging) {
+      ball.velocity.y += b;
+      if (Math.abs(ball.velocity.x) < 1) {
+        ball.velocity.x = 0;
       }
-      if (Math.abs(l.velocity.y) < 1) {
-        l.velocity.y = 0;
+      if (Math.abs(ball.velocity.y) < 1) {
+        ball.velocity.y = 0;
       }
-      l.x = l.x + Math.round(l.velocity.x);
-      l.y = l.y + Math.round(l.velocity.y);
-      t();
+      ball.x = ball.x + Math.round(ball.velocity.x);
+      ball.y = ball.y + Math.round(ball.velocity.y);
+      handleCollisions();
     }
-    for (var v = 0, u = e.list.length; v < u; v++) {
-      z = e.list[v].ref;
-      w = e.list[v].context;
-      y = l.x - (z.screenX - o.x0);
-      x = l.y - (z.screenY - o.y0);
+    for (var v = 0, u = windowListManager.list.length; v < u; v++) {
+      z = windowListManager.list[v].ref;
+      w = windowListManager.list[v].context;
+      y = ball.x - (z.screenX - worldOrigin.x0);
+      x = ball.y - (z.screenY - worldOrigin.y0);
       w.save();
       w.clearRect(0, 0, z.innerWidth, z.innerHeight);
       w.translate(y, x);
-      l.angle += l.rotation;
-      w.rotate(l.angle);
-      w.drawImage(l.img, -l.offset.x, -l.offset.y, l.w, l.h);
+      ball.angle += ball.rotation;
+      w.rotate(ball.angle);
+      w.drawImage(ball.img, -ball.offset.x, -ball.offset.y, ball.w, ball.h);
       w.restore();
     }
   };
-  var k = function () {
-    var v = e.list
+
+  // When we close the parent window, close all child windows and unload everything.
+  var closeParentWindowHandler = function () {
+    var v = windowListManager.list
       .map(function (w) {
         return w.ref;
       })
@@ -486,11 +534,13 @@ window.browserball = (function () {
     for (var i = 0, len = v.length; i < len; i++) {
       v[i].close();
     }
-    self.removeEventListener("resize", n, false);
-    self.removeEventListener("mousedown", h.down, false);
-    self.removeEventListener("mouseup", h.up, false);
-    l.img = null;
+    self.removeEventListener("resize", windowResizeHandler, false);
+    self.removeEventListener("mousedown", mouseHandlers.down, false);
+    self.removeEventListener("mouseup", mouseHandlers.up, false);
+    ball.img = null;
   };
+
+  // The API, which will be exported to the parent (initial) window's global namespace under `browserball`.
   return {
     init: function () {
       var u = document.getElementById ? document.getElementById("stage") : null;
@@ -499,61 +549,63 @@ window.browserball = (function () {
       }
       u.width = window.innerWidth;
       u.height = window.innerHeight;
-      window.addEventListener("resize", n, false);
-      window.addEventListener("mousedown", h.down, false);
-      window.addEventListener("mouseup", h.up, false);
-      window.onunload = k;
+      window.addEventListener("resize", windowResizeHandler, false);
+      window.addEventListener("mousedown", mouseHandlers.down, false);
+      window.addEventListener("mouseup", mouseHandlers.up, false);
+      window.onunload = closeParentWindowHandler;
       var v = document.createElement("a");
       v.appendChild(document.createTextNode("Create Window"));
       v.className = "child";
       document.body.appendChild(v);
-      v.addEventListener("click", g, false);
+      v.addEventListener("click", createChildWindow, false);
       v = document.createElement("a");
       v.appendChild(document.createTextNode("Reset Ball"));
       v.className = "reset";
       document.body.appendChild(v);
-      v.addEventListener("click", m, false);
+      v.addEventListener("click", resetBall, false);
       v = null;
       if (window.screenX === undefined) {
         window.screenX = window.screenLeft;
         window.screenY = window.screenTop;
         q = true;
       }
-      e.add(self);
-      l.w *= l.scale;
-      l.h *= l.scale;
-      l.offset.x = l.radius = l.w / 2;
-      l.offset.y = l.h / 2;
-      l.x = window.innerWidth / 2;
-      l.y = window.innerHeight / 2;
-      l.img.onload = function () {
-        setInterval(f, s);
+      windowListManager.add(self);
+      ball.w *= ball.scale;
+      ball.h *= ball.scale;
+      ball.offset.x = ball.radius = ball.w / 2;
+      ball.offset.y = ball.h / 2;
+      ball.x = window.innerWidth / 2;
+      ball.y = window.innerHeight / 2;
+      ball.img.onload = function () {
+        setInterval(updateWorld, s);
       };
-      l.img.src = "img/logo.png";
-      setInterval(r, 250);
+      ball.img.src = "img/logo.png";
+      setInterval(windowPositionPoller, 250);
       v = null;
     },
+
     addChild: function (v) {
       var u = v.document.getElementById("stage");
       u.width = v.innerWidth;
       u.height = v.innerHeight;
-      v.addEventListener("resize", n, false);
-      v.addEventListener("mousedown", h.down, false);
-      v.addEventListener("mouseup", h.up, false);
+      v.addEventListener("resize", windowResizeHandler, false);
+      v.addEventListener("mousedown", mouseHandlers.down, false);
+      v.addEventListener("mouseup", mouseHandlers.up, false);
       v.onunload = this.removeChild;
       if (q) {
         v.screenX = v.screenLeft;
         v.screenY = v.screenTop;
       }
-      e.add(v);
+      windowListManager.add(v);
       v = null;
     },
+
     removeChild: function () {
       var u = this.quad_ref,
-        v = e.remove(u);
-      v.removeEventListener("resize", n, false);
-      v.removeEventListener("mousedown", h.down, false);
-      v.removeEventListener("mouseup", h.up, false);
+        v = windowListManager.remove(u);
+      v.removeEventListener("resize", windowResizeHandler, false);
+      v.removeEventListener("mousedown", mouseHandlers.down, false);
+      v.removeEventListener("mouseup", mouseHandlers.up, false);
       u = v = null;
     },
   };
