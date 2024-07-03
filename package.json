@@ -1,0 +1,15 @@
+{
+  "type": "module",
+  "scripts": {
+    "format:check": "npx prettier --check js/**/*.js",
+    "format": "npx prettier --write js/**/*.js",
+    "lint": "npx eslint js/**/*.js"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.1.0",
+    "@eslint/js": "^9.6.0",
+    "eslint": "^9.6.0",
+    "globals": "^15.8.0",
+    "prettier": "3.3.2"
+  }
+}
